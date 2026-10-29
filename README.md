@@ -57,3 +57,9 @@ We must obtain retailer approval, permitted feeds, proper tracking links and med
 6. Introduce explainable AI ranking from users' selected brand/style signals.
 
 This repository does not contain partner credentials. Future sensitive keys belong on a server, never in frontend Vite environment variables.
+
+
+## Approved retailer catalog integration
+See docs/FEED_INTEGRATIONS.md for approved CSV/JSON product imports, image and affiliate-link rights, freshness checks and security. This is ready for authorized feeds, but no real merchant feed is connected.
+
+    npm run import:feed -- --config /secure/merchant.json --input /secure/feed.csv --format awin-csv
