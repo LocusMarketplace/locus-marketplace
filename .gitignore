@@ -4,3 +4,7 @@ dist/
 .env.local
 .DS_Store
 coverage/
+
+# Do not commit any approved merchant credentials
+feeds/*.private.json
+feeds/*.private.*
