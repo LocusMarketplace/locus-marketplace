@@ -1,70 +1,59 @@
-# Getting Started with Create React App
+# Locus Marketplace — Rebuild v1
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+**An editorial, personalized discovery marketplace for menswear, womenswear, and home.**
 
-## Available Scripts
+This is a **clean rebuild**, with the original prototype retained in Git history but not used as the application runtime. Search, styling, saved items, product comparison, brand navigation and preferences are designed as an actual working experience rather than static mock buttons.
 
-In the project directory, you can run:
+## Run locally in VS Code
 
-### `npm start`
+Requires Node.js 22.12+ (Vite also supports 20.19+).
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1. Clone https://github.com/LocusMarketplace/locus-marketplace
+2. In VS Code, select branch **rebuild/locus-v1-platform** (or review/merge the pull request first).
+3. Open the VS Code terminal in the repository.
+4. Run:
+   npm install
+   npm run dev
+5. Open the local URL printed in the terminal (typically http://localhost:5173).
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Tests:
+  npm test
+Production build:
+  npm run build
+Preview:
+  npm run preview
 
-### `npm test`
+## What works now
+- Responsive editorial homepage with departments for menswear, womenswear and home.
+- Natural-language query parsing: basic color/type/dept/price-floor/price-ceiling terms.
+- Search across products, category, brand, aesthetic, type, price and sort controls.
+- Brand directory with working links to actual official merchant homepages.
+- Save/unsave items; review saved list. Saved items persist **in this browser**.
+- Save/modify personal departments, brand tastes and style preferences, locally.
+- Compare up to 3 sample product attributes side by side.
+- Honest empty states, disclosure and data-contract tests.
+- CI configured to run tests and build on PRs.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Clear distinction: prototype versus production
+The sample product records are illustrative. They are **not** live retailer products; title, price, fit, material and availability are not sourced from approved retailer feeds. Product artwork is stylized, not brand product imagery. “Visit brand” opens an official merchant homepage, not an affiliate-tracked deep link. No purchase, revenue, checkout, customer account, AI model or order tracking is connected.
 
-### `npm run build`
+We must obtain retailer approval, permitted feeds, proper tracking links and media rights before making live product or affiliate claims. Do not scrape retailers or invent affiliate IDs.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Repo structure
+- src/App.jsx — working marketplace interface and local preferences
+- src/styles.css — responsive editorial design system
+- src/data/catalog.js — explicit demo catalog and brand directory
+- src/lib/search.js — testable natural-language filtering
+- src/lib/outbound.js — trusted outbound-link/partner gating primitive
+- tests/ — Node native automated tests
+- docs/PLATFORM_ARCHITECTURE.md — operating and scaling architecture
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Proposed next product milestones
+1. Validate frontend in Chrome/Safari/mobile and fix UX/accessibility issues.
+2. Stand up staging domain and preview hosting.
+3. Add approved retailer connectors and a normalized catalog store.
+4. Connect product-level verified deep links and affiliate tracking (only after partner approvals).
+5. Add authenticated profile sync, consent-aware analytics and production operations.
+6. Introduce explainable AI ranking from users' selected brand/style signals.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+This repository does not contain partner credentials. Future sensitive keys belong on a server, never in frontend Vite environment variables.
