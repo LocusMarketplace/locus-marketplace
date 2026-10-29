@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { brands, brandByName, departments, formatPrice, products, styles } from './data/catalog.js';
 import { searchCatalog } from './lib/search.js';
+import { validPublishedCatalog } from './lib/liveCatalog.js';
+import { safeHttps } from './lib/outbound.js';
 
 const IDEAS=['white t-shirt under $80','linen shirt','women dress under $250','table lamp','jogger under $100'];
 const HERO_PHOTO='https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1400&q=85&auto=format&fit=crop';
@@ -19,10 +21,11 @@ function useStoredState(key,fallback){
  useEffect(()=>{try{window.localStorage.setItem(key,JSON.stringify(value));}catch{}},[key,value]);
  return [value,setValue];
 }
-function BrandLink({name,children,className=''}) {
+function BrandLink({name,children,className='',website}) {
  const brand=brandByName[name];
- if(!brand)return <span>{name}</span>;
- return <a href={brand.website} target="_blank" rel="noopener noreferrer" className={className} aria-label={'Visit '+name+' official website (opens in a new tab)'}>{children||name}<ArrowUpRight size={13}/></a>;
+ const href=safeHttps(brand?.website||website);
+ if(!href)return <span>{name}</span>;
+ return <a href={href} target="_blank" rel="noopener noreferrer" className={className} aria-label={'Visit '+name+' official website (opens in a new tab)'}>{children||name}<ArrowUpRight size={13}/></a>;
 }
 function ProductVisual({item}) {
  const variant=item.department==='Home'?'home':item.department==='Womenswear'?'women':'men';
@@ -36,17 +39,20 @@ function ProductCard({item,isSaved,isCompared,onSave,onCompare}) {
  return <article className="product-card">
   <div className="product-image">
    <ProductVisual item={item}/>
+   {item.verified&&item.imageUrl&&<img className="product-feed-image" src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display='none';}}/>}
    <button type="button" className={'round-action save-button '+(isSaved?'selected':'')} onClick={()=>onSave(item.id)} aria-pressed={isSaved} aria-label={(isSaved?'Remove ':'Save ')+item.title}><Heart size={18} fill={isSaved?'currentColor':'none'}/></button>
-   <span className="product-demo-label">Concept item</span>
+   <span className="product-demo-label">{item.verified?'From retailer feed':'Concept item'}</span>
   </div>
   <div className="product-copy">
    <div className="product-brand">{item.brand}</div>
    <h3>{item.title}</h3>
    <div className="product-meta"><span>{item.fit==='—'?item.material:item.fit+' fit'}</span><span>·</span><span>{item.color}</span></div>
-   <div className="product-price">{formatPrice(item.price)} <span>illustrative</span></div>
+   <div className="product-price">{formatPrice(item.price)} <span>{item.verified?'feed price':'illustrative'}</span></div>
    <div className="product-actions">
     <button type="button" className={'compare-button '+(isCompared?'selected':'')} onClick={()=>onCompare(item.id)} aria-pressed={isCompared}>{isCompared?<Check size={15}/>:<Layers size={15}/>} {isCompared?'Added':'Compare'}</button>
-    <BrandLink name={item.brand} className="visit-link">Visit brand</BrandLink>
+    {item.verified&&(item.affiliateUrl||item.productUrl)?
+     <a className="visit-link" href={safeHttps(item.affiliateUrl||item.productUrl)||item.brandHomepage} target="_blank" rel={item.affiliateUrl?'sponsored noopener noreferrer':'noopener noreferrer'}>View product <ArrowUpRight size={13}/></a>
+     :<BrandLink name={item.brand} website={item.brandHomepage} className="visit-link">Visit brand</BrandLink>}
    </div>
   </div>
  </article>;
@@ -68,7 +74,7 @@ function Comparison({items,onRemove,onClose}) {
  return <div className="modal-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
   <section className="comparison-panel" role="dialog" aria-modal="true" aria-label="Compare selected products">
    <div className="modal-head"><div><p className="eyebrow">THE EDIT</p><h2>Compare your picks</h2></div><button type="button" className="round-action" onClick={onClose} aria-label="Close comparison"><X/></button></div>
-   <p className="fine-print">These are illustrative comparison records, not live retailer offers. Prices, fit, and materials are examples until authorized feeds are connected.</p>
+   <p className="fine-print">{items.every(item=>item.verified)?'These items are from approved retailer feeds. Prices are subject to change at checkout.':'These are illustrative comparison records, not live retailer offers. Prices, fit, and materials are examples until authorized feeds are connected.'}</p>
    <div className="comparison-scroll"><table className="comparison-table"><thead><tr><th>Details</th>{items.map(p=><th key={p.id}><span>{p.brand}</span><strong>{p.title}</strong><button type="button" onClick={()=>onRemove(p.id)}>Remove</button></th>)}</tr></thead><tbody>
     {[
      ['Example price',p=>formatPrice(p.price)],['Category',p=>p.department],['Type',p=>p.type],
@@ -112,12 +118,23 @@ function App(){
  const [mobileNav,setMobileNav]=useState(false);
  const [brandDirectoryDepartment,setBrandDirectoryDepartment]=useState('All');
  const [brandFilter,setBrandFilter]=useState('');
- const result=useMemo(()=>searchCatalog(products,{query,department,type,brand,style,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,saved}),[query,department,type,brand,style,maxPrice,sort,prefs,saved]);
- const types=useMemo(()=>['All',...new Set(products.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
- const brandOptions=useMemo(()=>['All',...new Set(products.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
- const preferredItems=useMemo(()=>searchCatalog(products,{preferredBrands:prefs.brands,preferredStyles:prefs.styles}).items.slice(0,8),[prefs]);
- const savedItems=products.filter(p=>saved.includes(p.id));
- const compareItems=products.filter(p=>compare.includes(p.id));
+ const [liveCatalog,setLiveCatalog]=useState([]);
+ useEffect(()=>{
+  const controller=new AbortController();
+  fetch(import.meta.env.BASE_URL+'catalog/approved.json',{cache:'no-store',signal:controller.signal})
+   .then(r=>r.ok?r.json():null)
+   .then(doc=>{if(!controller.signal.aborted){const valid=validPublishedCatalog(doc);if(valid.length)setLiveCatalog(valid);}})
+   .catch(()=>{ /* Missing or not-yet-approved feed: keep clearly labeled demo data. */ });
+  return ()=>controller.abort();
+ },[]);
+ const catalog=liveCatalog.length?liveCatalog:products;
+ const isLive=liveCatalog.length>0;
+ const result=useMemo(()=>searchCatalog(catalog,{query,department,type,brand,style,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,saved}),[query,department,type,brand,style,maxPrice,sort,prefs,saved,catalog]);
+ const types=useMemo(()=>['All',...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
+ const brandOptions=useMemo(()=>['All',...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
+ const preferredItems=useMemo(()=>searchCatalog(catalog,{preferredBrands:prefs.brands,preferredStyles:prefs.styles}).items.slice(0,8),[prefs,catalog]);
+ const savedItems=catalog.filter(p=>saved.includes(p.id));
+ const compareItems=catalog.filter(p=>compare.includes(p.id));
  const visibleBrands=brands.filter(b=>(brandDirectoryDepartment==='All'||b.departments.includes(brandDirectoryDepartment))&&b.name.toLowerCase().includes(brandFilter.toLowerCase()));
  const changePage=(next)=>{setPage(next);setMobileNav(false);window.scrollTo({top:0,behavior:'smooth'});};
  const browse=(dept='All',search=query)=>{setDepartment(dept);setType('All');setBrand('All');setQuery(search);changePage('shop');};
@@ -148,21 +165,21 @@ function App(){
     </div>
    </section>
    <section className="personal-section content-wrap"><div className="personal-intro"><p className="eyebrow">THE PERSONAL EDIT</p><h2>Made for your eye,<br/><em>not an algorithm's agenda.</em></h2><p>Set the brands and aesthetics you love. We'll highlight similar pieces and new names, with shopping links that lead directly to each brand.</p><button type="button" className="button-primary" onClick={()=>setShowPreferences(true)}>{prefs.brands.length||prefs.styles.length?'Refine your preferences':'Build your style profile'} <ArrowRight size={17}/></button></div><div className="personal-editorial"><span>YOUR TASTE IS THE STARTING POINT</span><div><Sparkles size={27}/><strong>Discover beyond your favorites.</strong><p>Coastal ease, heritage craftsmanship, warm interiors—and whatever else defines you.</p></div><span>FASHION / HOME / DISCOVERY</span></div></section>
-   <section className="picks-section content-wrap"><div className="section-heading"><div><p className="eyebrow">A LITTLE INSPIRATION</p><h2>{prefs.brands.length||prefs.styles.length?'Your curated starting point':'A few things catching our eye'}</h2></div><button className="text-action" type="button" onClick={()=>browse()}>View all concepts <ArrowUpRight size={18}/></button></div><div className="concept-note"><Info size={16}/> Concept-only sample items. Titles, prices, attributes and artwork are illustrative—not live retailer listings.</div><ProductGrid items={preferredItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare}/></section>
+   <section className="picks-section content-wrap"><div className="section-heading"><div><p className="eyebrow">A LITTLE INSPIRATION</p><h2>{prefs.brands.length||prefs.styles.length?'Your curated starting point':'A few things catching our eye'}</h2></div><button className="text-action" type="button" onClick={()=>browse()}>View the full edit <ArrowUpRight size={18}/></button></div><div className="concept-note"><Info size={16}/> {isLive?'Approved retailer feed records; prices and availability can change at checkout.':'Concept-only sample items. Titles, prices, attributes and artwork are illustrative—not live retailer listings.'}</div><ProductGrid items={preferredItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare}/></section>
    <section className="brand-strip"><div className="content-wrap"><p className="eyebrow">A FEW NAMES WE LOVE</p><div className="brand-strip-inner">{['Faherty','Buck Mason','Rhone','Marine Layer','Reformation','Jenni Kayne'].map(n=><BrandLink key={n} name={n} className="brand-name-link"/>)}</div><button type="button" className="underlined-action" onClick={()=>changePage('brands')}>Explore the full brand directory <ArrowRight size={17}/></button></div></section>
   </main>}
   {page==='shop'&&<main className="shop-page content-wrap"><div className="page-intro"><div><p className="eyebrow">THE CROSS-BRAND EDIT</p><h1>Find your <em>something.</em></h1><p>Search across styles and brands, then compare the details that matter.</p></div><span className="section-number">LOCUS / DISCOVER</span></div>
    <div className="shop-search-area"><SearchForm query={query} setQuery={setQuery} onSubmit={()=>{}} large/><div className="suggestions"><span>Try:</span>{IDEAS.map(i=><button type="button" key={i} onClick={()=>{setQuery(i);setType('All');setBrand('All');}}>{i}</button>)}</div></div>
    <div className="department-tabs" role="group" aria-label="Departments">{departments.map(d=><button key={d} type="button" className={department===d?'active':''} onClick={()=>{setDepartment(d);setType('All');setBrand('All');}}>{d}</button>)}</div>
    <div className="shop-layout"><aside className="filter-sidebar"><div className="filter-title"><SlidersHorizontal size={18}/><strong>Refine the edit</strong><button type="button" onClick={clear}>Reset</button></div>
-    <label className="filter-control">Category<select value={type} onChange={e=>setType(e.target.value)}><option>All</option>{[...new Set(products.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort().map(t=><option key={t}>{t}</option>)}</select></label>
-    <label className="filter-control">Brand<select value={brand} onChange={e=>setBrand(e.target.value)}><option>All</option>{[...new Set(products.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort().map(b=><option key={b}>{b}</option>)}</select></label>
+    <label className="filter-control">Category<select value={type} onChange={e=>setType(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort().map(t=><option key={t}>{t}</option>)}</select></label>
+    <label className="filter-control">Brand<select value={brand} onChange={e=>setBrand(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort().map(b=><option key={b}>{b}</option>)}</select></label>
     <label className="filter-control">Aesthetic<select value={style} onChange={e=>setStyle(e.target.value)}><option>All</option>{styles.map(s=><option key={s}>{s}</option>)}</select></label>
     <label className="filter-control">Price ceiling <strong>{formatPrice(maxPrice)}</strong><input type="range" min="50" max="1000" step="25" value={maxPrice} onChange={e=>setMaxPrice(Number(e.target.value))}/><span className="range-ends"><span>$50</span><span>$1,000+</span></span></label>
     <div className="sidebar-message"><Sparkles size={17}/><span>Make discovery yours.</span><button type="button" onClick={()=>setShowPreferences(true)}>Edit your style preferences <ArrowRight size={14}/></button></div>
    </aside>
-   <div className="shop-main"><div className="shop-results-header"><div><strong>{result.items.length} concept matches</strong><p>{query?'Showing results for “'+query+'”':'Explore and compare across the Locus catalog'}</p></div><label className="sort-control">Sort <select value={sort} onChange={e=>setSort(e.target.value)}><option value="recommended">For you</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="brand">Brand A–Z</option></select></label></div>
-    <div className="concept-note"><Info size={16}/> Demo catalog only—product records and prices are illustrative. “Visit brand” opens the retailer's official website, not a specific product or affiliate link.</div>
+   <div className="shop-main"><div className="shop-results-header"><div><strong>{result.items.length} {isLive?'feed products':'concept matches'}</strong><p>{query?'Showing results for “'+query+'”':'Explore and compare across the Locus catalog'}</p></div><label className="sort-control">Sort <select value={sort} onChange={e=>setSort(e.target.value)}><option value="recommended">For you</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="brand">Brand A–Z</option></select></label></div>
+    <div className="concept-note"><Info size={16}/> {isLive?'Products are sourced from an authorized retailer feed. Prices may change, and merchants handle checkout.':'Demo catalog only—product records and prices are illustrative. “Visit brand” opens the retailer\'s official website, not a specific product or affiliate link.'}</div>
     {result.items.length?<ProductGrid items={result.items} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare}/>:<EmptyResults onReset={clear}/>}
    </div></div>
   </main>}
@@ -171,8 +188,8 @@ function App(){
    <div className="brand-directory">{visibleBrands.map((b,index)=><article key={b.name} className="brand-entry"><div className="brand-entry-number">{String(index+1).padStart(2,'0')}</div><div className="brand-entry-content"><h3>{b.name}</h3><div className="brand-tags">{b.departments.map(x=><span key={x}>{x}</span>)}{b.styles.slice(0,2).map(x=><span key={x}>{x}</span>)}</div></div><div className="brand-entry-actions"><button type="button" onClick={()=>{setBrand(b.name);setType('All');setDepartment('All');setQuery('');changePage('shop');}}>Browse concepts <ChevronRight size={16}/></button><BrandLink name={b.name} className="brand-external">Visit website</BrandLink></div></article>)}</div>
    {!visibleBrands.length&&<div className="empty-state"><h3>No brands found</h3><button type="button" className="button-secondary" onClick={()=>{setBrandFilter('');setBrandDirectoryDepartment('All');}}>Reset directory</button></div>}
   </main>}
-  {page==='saved'&&<main className="content-wrap saved-page"><div className="page-intro"><div><p className="eyebrow">KEPT CLOSE</p><h1>The things you <em>come back to.</em></h1><p>Saved to this browser. No account or checkout required.</p></div><span className="section-number">YOUR EDIT / {savedItems.length}</span></div>{savedItems.length?<><div className="concept-note"><Info size={16}/> Saved sample records are stored locally on your device. No synchronized account is connected.</div><ProductGrid items={savedItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare}/></>:<div className="empty-state"><Bookmark size={34} strokeWidth={1.3}/><h3>Start collecting what speaks to you.</h3><p>Tap the heart on any concept item to save it here for later.</p><button type="button" className="button-primary" onClick={()=>browse()}>Explore the marketplace <ArrowRight size={17}/></button></div>}</main>}
-  <footer className="site-footer"><div className="content-wrap footer-top"><div><span className="footer-logo">locus.</span><p>A more considered way to discover what's next.</p></div><div className="footer-links"><button type="button" onClick={()=>changePage('shop')}>Shop all</button><button type="button" onClick={()=>changePage('brands')}>Brands</button><button type="button" onClick={()=>setShowPreferences(true)}>My style</button></div></div><div className="content-wrap footer-bottom"><span>© {new Date().getFullYear()} Locus Marketplace. Prototype / pre-launch.</span><span>Sample catalog · No affiliate sales or checkout active · Browsing leaves Locus for each brand's official website.</span></div></footer>
+  {page==='saved'&&<main className="content-wrap saved-page"><div className="page-intro"><div><p className="eyebrow">KEPT CLOSE</p><h1>The things you <em>come back to.</em></h1><p>Saved to this browser. No account or checkout required.</p></div><span className="section-number">YOUR EDIT / {savedItems.length}</span></div>{savedItems.length?<><div className="concept-note"><Info size={16}/> Saved items are stored locally on your device. No synchronized account is connected.</div><ProductGrid items={savedItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare}/></>:<div className="empty-state"><Bookmark size={34} strokeWidth={1.3}/><h3>Start collecting what speaks to you.</h3><p>Tap the heart on any concept item to save it here for later.</p><button type="button" className="button-primary" onClick={()=>browse()}>Explore the marketplace <ArrowRight size={17}/></button></div>}</main>}
+  <footer className="site-footer"><div className="content-wrap footer-top"><div><span className="footer-logo">locus.</span><p>A more considered way to discover what's next.</p></div><div className="footer-links"><button type="button" onClick={()=>changePage('shop')}>Shop all</button><button type="button" onClick={()=>changePage('brands')}>Brands</button><button type="button" onClick={()=>setShowPreferences(true)}>My style</button></div></div><div className="content-wrap footer-bottom"><span>© {new Date().getFullYear()} Locus Marketplace. Prototype / pre-launch.</span><span>{isLive?"Retailer-supplied product information · Checkout takes place on merchant websites · Prices may change.":"Sample catalog · No affiliate sales or checkout active · Browse official merchant websites."}</span></div></footer>
   {compare.length>0&&<div className="compare-tray"><div><Layers size={19}/><strong>{compare.length} of 3 selected</strong><span>Compare details, materials and illustrative pricing</span></div><div className="compare-tray-actions"><button type="button" onClick={()=>setCompare([])} className="link-button">Clear</button><button type="button" className="button-primary" onClick={()=>setShowComparison(true)} disabled={compare.length<2}>Compare picks <ArrowRight size={16}/></button></div></div>}
   {showComparison&&compare.length>0&&<Comparison items={compareItems} onRemove={toggleCompare} onClose={()=>setShowComparison(false)}/>}
   {showPreferences&&<PreferenceModal prefs={prefs} onSave={setPrefs} onClose={()=>setShowPreferences(false)}/>}
