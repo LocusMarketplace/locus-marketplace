@@ -47,7 +47,7 @@ export function filterCatalog(products, options = {}) {
   const results = products.filter((product) => {
     const price = Number(String(product.price || '').replace(/[^0-9.]/g, ''));
     const department = product.category || 'Menswear';
-    const text = [product.name, product.brand, product.description, ...(product.tags || [])].join(' ').toLowerCase();
+    const text = [product.title || product.name, product.kind, product.brand, product.description || '', product.color || '', product.fit || '', ...(product.tags || [])].join(' ').toLowerCase();
     const listedColor = String(product.color || '').toLowerCase();
     if (!Number.isFinite(price) || price > Number(maxPrice)) return false;
     if (parsed.minPrice !== null && price < parsed.minPrice) return false;
@@ -59,7 +59,7 @@ export function filterCatalog(products, options = {}) {
     if (selectedTags.length && !selectedTags.some((tag) => (product.tags || []).includes(tag))) return false;
     return parsed.keywords.every((keyword) => text.includes(keyword));
   });
-  if (sort === 'price-asc') return results.sort((a, b) => Number(a.price.replace(/[^0-9.]/g, '')) - Number(b.price.replace(/[^0-9.]/g, '')));
-  if (sort === 'price-desc') return results.sort((a, b) => Number(b.price.replace(/[^0-9.]/g, '')) - Number(a.price.replace(/[^0-9.]/g, '')));
+  if (sort === 'price-asc') return results.sort((a, b) => Number(String(a.price).replace(/[^0-9.]/g, '')) - Number(String(b.price).replace(/[^0-9.]/g, '')));
+  if (sort === 'price-desc') return results.sort((a, b) => Number(String(b.price).replace(/[^0-9.]/g, '')) - Number(String(a.price).replace(/[^0-9.]/g, '')));
   return results;
 }
