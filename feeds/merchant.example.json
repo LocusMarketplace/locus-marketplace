@@ -1,0 +1,13 @@
+{
+  "id": "replace-with-approved-merchant-id",
+  "brand": "Approved Brand Name",
+  "website": "https://example.com",
+  "department": "Menswear",
+  "currency": "USD",
+  "styles": [
+    "Timeless"
+  ],
+  "approved": false,
+  "canDisplayImages": false,
+  "canUseAffiliateLinks": false
+}
