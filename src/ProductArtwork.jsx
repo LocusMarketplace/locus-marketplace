@@ -1,4 +1,5 @@
 import React from 'react';
+import {placeholderImage} from './data/imagery.js';
 // Original vector illustrations. Deliberately stylized, no merchant artwork or logos.
 const palette={White:'#e9e5da',Ivory:'#ebe2cb',Cream:'#e6d7ba',Navy:'#364459',Blue:'#708ca0',Indigo:'#546a86',Black:'#343638',Charcoal:'#575554',Olive:'#68715a',Sage:'#a2b2a0',Khaki:'#bca88c',Beige:'#c9bda6',Natural:'#c4ad89',Brown:'#896b52',Walnut:'#785743',Oatmeal:'#c2b5a0',Brass:'#b99a58'};
 const shape={
@@ -20,6 +21,8 @@ const shape={
  'Decor':'M79 24 121 24 117 56 Q156 88 135 136 Q100 167 65 136 Q44 88 83 56Z'
 };
 export default function ProductArtwork({item}){
+ const photo=placeholderImage(item.type,item);
+ if(photo)return <div className="product-art photo-placeholder" role="img" aria-label={`AI-generated example ${item.type.toLowerCase()} image; not a photograph of the listed product`} style={{backgroundImage:`url('/images/${photo.atlas}')`,backgroundPosition:`${photo.x}% ${photo.y}%`}}/>;
  const color=palette[item.color]||palette.Natural,type=item.type,path=shape[type]||shape['T-Shirts'];
  const seam=['Shirts','Outerwear','Polos'].includes(type),rib=['Knitwear','T-Shirts'].includes(type),pants=['Pants','Denim','Activewear','Shorts'].includes(type);
  return <div className="product-art original-product-art" style={{'--item-tone':color}}><svg viewBox="0 0 200 180" aria-hidden="true"><ellipse cx="100" cy="159" rx="70" ry="7" fill="#000" opacity=".09"/><path d={path} fill={color} stroke="#524b41" strokeOpacity=".45" strokeWidth="1.5" strokeLinejoin="round"/>{seam&&<g stroke="#524b41" opacity=".48" fill="none"><path d="M100 39V151 M79 20 88 47 100 37 112 47 121 20 M65 70H84V92H65Z"/>{[50,68,86,104,122].map(y=><circle key={y} cx="104" cy={y} r="1.5" fill="#524b41"/>)}</g>}{rib&&<path d="M65 141H135 M80 23Q100 41 120 23" fill="none" stroke="#524b41" opacity=".4"/>}{pants&&<path d="M63 36H137 M100 36V62 M66 40Q76 58 88 52 M134 40Q124 58 112 52" fill="none" stroke="#524b41" opacity=".45"/>}{type==='Rugs'&&<g fill="none" stroke="#524b41" opacity=".45"><rect x="49" y="32" width="102" height="114"/><path d="M100 40 142 89 100 138 58 89Z M100 65 120 89 100 113 80 89Z"/></g>}{type==='Bedding'&&<path d="M38 85H162 M38 93H162" stroke="#524b41" opacity=".3"/>}</svg><span className="art-type">{item.type}</span><span className="art-tone">{item.color}</span><span className="illustration-tag">Illustration</span></div>;

@@ -40,10 +40,13 @@ function ProductVisual({item}) {
  return <ProductArtwork item={item}/>;
 }
 function ProductCard({item,isSaved,isCompared,onSave,onCompare,onOutbound}) {
+ const [imageFailed,setImageFailed]=useState(false);
+ const actualImage=item.verified&&item.imageUrl&&!imageFailed;
  return <article className="product-card">
   <div className="product-image">
    <ProductVisual item={item}/>
-   {item.verified&&item.imageUrl&&<img className="product-feed-image" src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" onError={e=>{e.currentTarget.style.display='none';}}/>}
+   {actualImage&&<img className="product-feed-image" src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" onError={()=>setImageFailed(true)}/>}
+   <span className={'photo-credit '+(actualImage?'feed-photo':'')}>{actualImage?'Retailer-supplied photo':'AI concept image'}</span>
    <button type="button" className={'round-action save-button '+(isSaved?'selected':'')} onClick={()=>onSave(item.id)} aria-pressed={isSaved} aria-label={(isSaved?'Remove ':'Save ')+item.title}><Heart size={18} fill={isSaved?'currentColor':'none'}/></button>
    <span className="product-demo-label">{sourceLabel(item)}</span>
   </div>
@@ -52,7 +55,7 @@ function ProductCard({item,isSaved,isCompared,onSave,onCompare,onOutbound}) {
    <h3>{item.title}</h3>
    <div className="product-meta"><span>{item.fit==='—'?item.material:item.fit+' fit'}</span><span>·</span><span>{item.color}</span></div>
    <div className="product-price">{formatPrice(item.price)} <span>{priceLabel(item)}</span></div>
-   {isReference(item)&&<p className="reference-note">Illustration, not product photo. Check the retailer for current price and availability.</p>}
+   {isReference(item)&&<p className="reference-note">AI example image, not the actual product. Check the retailer for current price and availability.</p>}
    <div className="product-actions">
     <button type="button" className={'compare-button '+(isCompared?'selected':'')} onClick={()=>onCompare(item.id)} aria-pressed={isCompared}>{isCompared?<Check size={15}/>:<Layers size={15}/>} {isCompared?'Added':'Compare'}</button>
     <ItemLink item={item} onOutbound={onOutbound}/>
@@ -170,6 +173,7 @@ function App(){
   {page==='home'&&<main>
    <section className="home-hero">
     <div className="hero-photo original-hero" aria-hidden="true"/>
+    <span className="hero-photo-caption">AI-generated editorial image</span>
     <div className="hero-content"><p className="eyebrow eyebrow-light">WELCOME TO YOUR LOCUS</p><h1>Good taste has <em>no boundaries.</em></h1><p className="hero-subtitle">Your favorite labels. Your next discovery. Clothes, spaces, and everything in between—curated around you.</p><div className="hero-search"><SearchForm large query={query} setQuery={setQuery} onSubmit={()=>browse('All',query,true)}/></div><div className="prompt-row"><span>Try searching</span>{IDEAS.slice(0,3).map(i=><button type="button" onClick={()=>browse('All',i,true)} key={i}>{i} <ArrowUpRight size={12}/></button>)}</div></div>
     <div className="hero-index">A BETTER WAY TO FIND WHAT FEELS LIKE YOU <span>01 / 03</span></div>
    </section>
@@ -179,7 +183,7 @@ function App(){
      <button type="button" className="department-tile dept-mens" onClick={()=>browse('Menswear','')}><div className="tile-image original-tile"><Shirt size={108} strokeWidth={.65}/></div><span className="tile-kicker">01 / THE WARDROBE</span><span className="tile-title">Menswear <ArrowUpRight size={23}/></span><span className="tile-caption">The classics, reconsidered.</span></button>
      <button type="button" className="department-tile dept-womens" onClick={()=>browse('Womenswear','')}><div className="tile-image original-tile"><Shirt size={108} strokeWidth={.65}/></div><span className="tile-kicker">02 / THE WARDROBE</span><span className="tile-title">Womenswear <ArrowUpRight size={23}/></span><span className="tile-caption">Pieces worth keeping.</span></button>
      <button type="button" className="department-tile dept-home" onClick={()=>browse('Home','')}><div className="tile-image original-tile"><Home size={108} strokeWidth={.65}/></div><span className="tile-kicker">03 / THE HOME</span><span className="tile-title">Home & living <ArrowUpRight size={23}/></span><span className="tile-caption">A space that feels like yours.</span></button>
-    </div>
+    </div><p className="image-disclosure">Department photography is AI-generated visual inspiration, not retailer campaign imagery.</p>
    </section>
    <section className="personal-section content-wrap"><div className="personal-intro"><p className="eyebrow">THE PERSONAL EDIT</p><h2>Made for your eye,<br/><em>not an algorithm's agenda.</em></h2><p>Set the brands and aesthetics you love. We'll highlight similar pieces and new names, with shopping links that lead directly to each brand.</p><button type="button" className="button-primary" onClick={()=>setShowPreferences(true)}>{prefs.brands.length||prefs.styles.length?'Refine your preferences':'Build your style profile'} <ArrowRight size={17}/></button></div><div className="personal-editorial"><span>YOUR TASTE IS THE STARTING POINT</span><div><Sparkles size={27}/><strong>Discover beyond your favorites.</strong><p>Coastal ease, heritage craftsmanship, warm interiors—and whatever else defines you.</p></div><span>FASHION / HOME / DISCOVERY</span></div></section>
    <section className="picks-section content-wrap"><div className="section-heading"><div><p className="eyebrow">A LITTLE INSPIRATION</p><h2>{prefs.brands.length||prefs.styles.length?'Your curated starting point':'A few things catching our eye'}</h2></div><button className="text-action" type="button" onClick={()=>browse('All','')}>View the full edit <ArrowUpRight size={18}/></button></div><div className="concept-note"><Info size={16}/> {isLive?'Approved retailer feed records; prices and availability can change at checkout.':'Independent concept catalog with dated editorial references. Unverified concept items are illustrative, not actual offers.'}</div><ProductGrid items={preferredItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/></section>

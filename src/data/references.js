@@ -13,6 +13,12 @@ const rows = [
  ['white-pima-classic-tee','White Pima Classic Tee','Menswear',48,'White','Classic','Cotton','2026-11-21'],
  ['india-ink-seafarer-cotton-rib-crew','India Ink Seafarer Cotton Rib Crew','Menswear',188,'Navy','Classic','Cotton','2026-11-21','Knitwear'],
  ['marled-deep-charcoal-felted-wool-chore-coat','Marled Deep Charcoal Felted Wool Chore Coat','Menswear',268,'Charcoal','Classic','Wool','2026-11-21','Outerwear'],
+ ['longshore-navy-japanese-sateen-cargo-pant','Japanese Sateen Cargo Pant','Menswear',228,'Navy','Relaxed','Cotton','2026-11-21','Pants'],
+ ['dark-navy-hersdman-shawl-cardigan','Herdsman Shawl Cardigan','Menswear',298,'Navy','Classic','Merino wool and cashmere','2026-11-21','Knitwear'],
+ ['burnt-olive-jungle-cloth-tanker-jacket','Jungle Cloth Tanker Jacket','Menswear',398,'Olive','Relaxed','Cotton','2026-11-21','Outerwear'],
+ ['deep-plum-sunset-slip-skirt','Sunset Slip Skirt','Womenswear',198,'Plum','—','Not specified','2026-11-21','Skirts'],
+ ['d059-roper-jean','Roper Jean','Womenswear',208,'Indigo','Classic','Cotton','2026-11-21','Denim'],
+ ['beach-blonde-barn-jacket','Barn Jacket','Womenswear',348,'Beige','Relaxed','Brushed cotton','2026-11-21','Outerwear'],
 ];
 export const references=rows.map(([slug,title,department,price,color,fit,material,sourceDate,type='T-Shirts'])=>({
  id:'reference-'+slug,brand:'Buck Mason',title,department,type,price,color,fit,material,

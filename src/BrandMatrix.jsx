@@ -2,11 +2,13 @@ import React,{useState} from 'react';
 import { ArrowRight, Compass, Layers } from 'lucide-react';
 import {brands,brandByName,departments} from './data/catalog.js';
 import {relatedBrands,tierLabel,brandSimilarity} from './lib/affinity.js';
+import {placeholderImage} from './data/imagery.js';
 
 export function BrandArtwork({brand}){
  const b=brandByName[brand],style=b?.styles[0]||'Timeless';
- const initials=brand.split(/\s+/).map(w=>w[0]).slice(0,3).join('');
- return <div aria-hidden="true" className={'brand-art brand-art-'+style.toLowerCase()}><span>{initials}</span><i/><small>LOCUS EDITORIAL</small></div>;
+ const type=b?.departments.every(d=>d==='Home')?({Coastal:'Lighting',Texture:'Bedding',Minimal:'Furniture',Heritage:'Rugs',Timeless:'Decor'}[style]||'Decor'):({Coastal:'Shirts',Performance:'Activewear',Heritage:'Outerwear',Preppy:'Polos',Minimal:'T-Shirts',Romantic:'Dresses',Relaxed:'Knitwear',Outdoor:'Outerwear',Timeless:'Knitwear',Texture:'Knitwear'}[style]||'Shirts');
+ const photo=placeholderImage(type);
+ return <div className={'brand-art brand-photo brand-art-'+style.toLowerCase()} role="img" aria-label="AI-generated style inspiration, not retailer imagery" style={{backgroundPosition:`${photo.x}% ${photo.y}%`}}><small>AI STYLE IMAGE</small></div>;
 }
 export function RelatedStrip({seeds,department='All',onBrowse,onMatrix}){
  const items=relatedBrands(seeds,{department,limit:5});
