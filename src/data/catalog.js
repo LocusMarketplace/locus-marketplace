@@ -1,3 +1,4 @@
+import {extraBrandRows,originalTiers,makeConcepts} from './expansion.js';
 // Concept fixtures only: no live inventory, real SKUs, merchant prices or affiliate attribution.
 // Official merchant homepages are navigation destinations, NOT product purchase links.
 const brandRows=[
@@ -29,8 +30,9 @@ const brandRows=[
  ['West Elm','westelm.com','Home','Minimal,Texture'],
  ['McGee & Co.','mcgeeandco.com','Home','Timeless,Texture']
 ];
-export const brands=brandRows.map(([name,domain,depts,styles])=>({
+export const brands=[...brandRows,...extraBrandRows].map(([name,domain,depts,styles,tier])=>({
  name,website:'https://'+domain,departments:depts.split(','),styles:styles.split(','),
+ priceTier:tier||originalTiers[name]||2,
  affiliateStatus:'not_connected',feedStatus:'not_connected'
 }));
 export const brandByName=Object.fromEntries(brands.map(b=>[b.name,b]));
@@ -69,10 +71,10 @@ const rows=[
  ['Quince','European Linen Sheets','Home','Bedding',150,'Ivory','—','Linen','Minimal,Timeless'],
  ['Jenni Kayne','Textured Throw','Home','Decor',138,'Natural','—','Cotton','Coastal,Texture']
 ];
-export const products=rows.map(([brand,title,department,type,price,color,fit,material,styles],i)=>({
+export const products=[...rows.map(([brand,title,department,type,price,color,fit,material,styles],i)=>({
  id:'sample-'+String(i+1).padStart(3,'0'),brand,title,department,type,price,color,fit,material,
  styles:styles.split(','),source:'illustrative',verified:false,productUrl:null,affiliateUrl:null
-}));
+})),...makeConcepts(brands)];
 export const departments=['All','Menswear','Womenswear','Home'];
 export const styles=['Coastal','Timeless','Minimal','Relaxed','Performance','Heritage','Outdoor','Preppy','Romantic','Texture'];
 export const formatPrice=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);

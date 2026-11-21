@@ -6,7 +6,7 @@ import {searchCatalog} from '../src/lib/search.js';
 import {addInsight,emptyInsights} from '../src/lib/insights.js';
 test('editorial references have ordinary links, dated facts and no retailer artwork or affiliate IDs',()=>{
  for(const item of references){
-  assert.ok(isReference(item)); assert.match(referenceUrl(item),/^https:\/\/www\.buckmason\.com\/products\/[a-z-]+$/);
+  assert.ok(isReference(item)); assert.match(referenceUrl(item),/^https:\/\/www\.buckmason\.com\/products\/[a-z0-9-]+$/);
   assert.equal(item.sourceUrl,item.productUrl+'.md');assert.match(priceLabel(item),/snapshot/);
   assert.equal(item.imageUrl,null);assert.equal(item.affiliateUrl,null);assert.equal(item.verified,false);
  }
@@ -15,7 +15,7 @@ test('editorial references have ordinary links, dated facts and no retailer artw
 });
 test('real product references are searchable alongside sample concepts',()=>{
  const r=searchCatalog([...references,...products],{query:'white t-shirt under $80'}).items;
- assert.equal(r.filter(isReference).length,2);assert.ok(r.some(p=>p.source==='illustrative'));
+ assert.equal(r.filter(isReference).length,4);assert.ok(r.some(p=>p.source==='illustrative'));
 });
 test('insights are local aggregate counters and ignore extra data and unrecognized names',()=>{
  const start=emptyInsights();

@@ -11,8 +11,11 @@ import { safeHttps } from './lib/outbound.js';
 import { references, isReference, referenceUrl, sourceLabel, priceLabel } from './data/references.js';
 import { emptyInsights, addInsight } from './lib/insights.js';
 import Insights from './Insights.jsx';
+import BrandMatrix,{BrandArtwork,RelatedStrip} from './BrandMatrix.jsx';
+import ProductArtwork from './ProductArtwork.jsx';
+import {mentionedBrands,tierLabel,withoutBrandTerms} from './lib/affinity.js';
 
-const IDEAS=['white t-shirt under $80','linen shirt','women dress under $250','table lamp','jogger under $100'];
+const IDEAS=['white t-shirt under $80','linen shirts like Faherty','women dress under $250','table lamp','jogger under $100','linen shirt; wool sweater; table lamp','golf polo under $100'];
 const demoCatalog=[...references,...products];
 function useStoredState(key,fallback){
  const [value,setValue]=useState(()=>{
@@ -34,12 +37,7 @@ function ItemLink({item,onOutbound,className='visit-link'}){
  return <BrandLink name={item.brand} website={item.brandHomepage} className={className} onClick={()=>onOutbound?.('brand_click',item)}>Visit brand</BrandLink>;
 }
 function ProductVisual({item}) {
- const variant=item.department==='Home'?'home':item.department==='Womenswear'?'women':'men';
- return <div className={'product-art art-'+variant}>
-  <div className="art-orbit art-orbit-one"/><div className="art-orbit art-orbit-two"/>
-  {item.department==='Home'?<Home size={64} strokeWidth={0.8}/>:<Shirt size={64} strokeWidth={0.8}/>}
-  <span className="art-type">{item.type}</span><span className="art-tone">{item.color}</span>
- </div>;
+ return <ProductArtwork item={item}/>;
 }
 function ProductCard({item,isSaved,isCompared,onSave,onCompare,onOutbound}) {
  return <article className="product-card">
@@ -125,6 +123,9 @@ function App(){
  const [brandFilter,setBrandFilter]=useState('');
  const [liveCatalog,setLiveCatalog]=useState([]);
  const [realOnly,setRealOnly]=useState(false);
+ const [includeRelated,setIncludeRelated]=useState(false);
+ const [matrixSeed,setMatrixSeed]=useState('Faherty');
+ const [visibleCount,setVisibleCount]=useState(24);
  const [insightsEnabled,setInsightsEnabled]=useState(false);
  const [insights,setInsights]=useState(emptyInsights);
  useEffect(()=>{
@@ -135,26 +136,30 @@ function App(){
    .catch(()=>{ /* Missing or not-yet-approved feed: keep clearly labeled demo data. */ });
   return ()=>controller.abort();
  },[]);
- const catalog=liveCatalog.length?liveCatalog:demoCatalog;
+ const catalog=useMemo(()=>[...liveCatalog,...demoCatalog],[liveCatalog]);
  const isLive=liveCatalog.length>0;
- const result=useMemo(()=>searchCatalog(realOnly?catalog.filter(p=>p.verified||isReference(p)):catalog,{query,department,type,brand,style,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,saved}),[query,department,type,brand,style,maxPrice,sort,prefs,saved,catalog,realOnly]);
- const types=useMemo(()=>['All',...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
- const brandOptions=useMemo(()=>['All',...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort((a,b)=>a==='All'?-1:b==='All'?1:a.localeCompare(b)),[department]);
+ const result=useMemo(()=>searchCatalog(realOnly?catalog.filter(p=>p.verified||isReference(p)):catalog,{query,department,type,brand,style,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,saved,includeRelated}),[query,department,type,brand,style,maxPrice,sort,prefs,saved,catalog,realOnly,includeRelated]);
+ useEffect(()=>setVisibleCount(24),[query,department,type,brand,style,maxPrice,sort,realOnly,includeRelated]);
  const preferredItems=useMemo(()=>searchCatalog(catalog,{preferredBrands:prefs.brands,preferredStyles:prefs.styles}).items.slice(0,8),[prefs,catalog]);
  const savedItems=catalog.filter(p=>saved.includes(p.id));
+ const affinitySeeds=[...new Set([...(brand==='All'?[]:[brand]),...mentionedBrands(query),...prefs.brands,...savedItems.map(p=>p.brand)])];
+ const discoverySeeds=affinitySeeds.length?affinitySeeds:['Faherty','Jenni Kayne'];
+ const resultSeeds=affinitySeeds.length?affinitySeeds:query.trim()&&result.items.length?[result.items[0].brand]:[];
  const compareItems=catalog.filter(p=>compare.includes(p.id));
  const visibleBrands=brands.filter(b=>(brandDirectoryDepartment==='All'||b.departments.includes(brandDirectoryDepartment))&&b.name.toLowerCase().includes(brandFilter.toLowerCase()));
  const record=(event,details={})=>{if(insightsEnabled)setInsights(old=>addInsight(old,event,details));};
  const recordItem=(event,item)=>{if(item)record(event,{brand:item.brand,category:item.type,price:item.price,source:item.source});};
- const recordSearch=(text)=>{if(text.trim())record('search',{category:parseQuery(text).type});};
+ const recordSearch=(text)=>{for(const clause of new Set(text.split(';').map(s=>s.trim()).filter(Boolean)))record('search',{category:parseQuery(clause).type});};
  const consent=(enabled)=>{setInsightsEnabled(enabled);if(!enabled)setInsights(emptyInsights());};
  const changePage=(next)=>{setPage(next);setMobileNav(false);window.scrollTo({top:0,behavior:'smooth'});};
- const browse=(dept='All',search=query,trackSearch=false)=>{if(trackSearch)recordSearch(search);if(dept!=='All')record('category');setDepartment(dept);setType('All');setBrand('All');setQuery(search);setRealOnly(false);changePage('shop');};
+ const browse=(dept='All',search=query,trackSearch=false)=>{if(trackSearch)recordSearch(search);if(dept!=='All')record('category');setDepartment(dept);setType('All');setBrand('All');setQuery(search);setRealOnly(false);setIncludeRelated(false);changePage('shop');};
+ const browseBrand=(name,related=false,dept='All',keepQuery=false)=>{setBrand(name);if(!keepQuery){setType('All');setQuery('');setStyle('All');setMaxPrice(1000);setRealOnly(false);}else setQuery(withoutBrandTerms(query));setDepartment(dept);setIncludeRelated(related);changePage('shop');};
+ const openMatrix=name=>{setMatrixSeed(name);changePage('matrix');};
  const toggleSaved=(id)=>{if(!saved.includes(id))recordItem('save',catalog.find(p=>p.id===id));setSaved(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);};
  const toggleCompare=(id)=>{if(!compare.includes(id)&&compare.length<3)recordItem('compare',catalog.find(p=>p.id===id));setCompare(old=>old.includes(id)?old.filter(x=>x!==id):old.length>=3?old:[...old,id]);};
- const clear=()=>{setQuery('');setDepartment('All');setType('All');setBrand('All');setStyle('All');setMaxPrice(1000);setSort('recommended');setRealOnly(false);};
- const navItems=[['home','Discover'],['shop','Shop all'],['brands','Brand directory'],['saved','Saved'],['insights','Partner demo']];
- useEffect(()=>{document.title='Locus — '+(page==='home'?'A marketplace for your kind of living':page==='shop'?'Shop across brands':page==='saved'?'Your saved edit':page==='brands'?'Explore brands':'Partner demo');},[page]);
+ const clear=()=>{setQuery('');setDepartment('All');setType('All');setBrand('All');setStyle('All');setMaxPrice(1000);setSort('recommended');setRealOnly(false);setIncludeRelated(false);};
+ const navItems=[['home','Discover'],['shop','Shop all'],['brands','Brands'],['matrix','Brand matrix'],['saved','Saved'],['insights','Partner demo']];
+ useEffect(()=>{document.title='Locus — '+(page==='home'?'A marketplace for your kind of living':page==='shop'?'Shop across brands':page==='saved'?'Your saved edit':page==='brands'?'Explore brands':page==='matrix'?'Brand matrix':'Partner demo');},[page]);
  return <div className="site-shell">
   <div className="announcement"><span>Independent pre-launch concept · No retailer affiliation implied.</span><span>Thoughtfully chosen. Uniquely yours. <ArrowRight size={13}/></span></div>
   <header className="site-header"><div className="header-inner">
@@ -178,29 +183,33 @@ function App(){
    </section>
    <section className="personal-section content-wrap"><div className="personal-intro"><p className="eyebrow">THE PERSONAL EDIT</p><h2>Made for your eye,<br/><em>not an algorithm's agenda.</em></h2><p>Set the brands and aesthetics you love. We'll highlight similar pieces and new names, with shopping links that lead directly to each brand.</p><button type="button" className="button-primary" onClick={()=>setShowPreferences(true)}>{prefs.brands.length||prefs.styles.length?'Refine your preferences':'Build your style profile'} <ArrowRight size={17}/></button></div><div className="personal-editorial"><span>YOUR TASTE IS THE STARTING POINT</span><div><Sparkles size={27}/><strong>Discover beyond your favorites.</strong><p>Coastal ease, heritage craftsmanship, warm interiors—and whatever else defines you.</p></div><span>FASHION / HOME / DISCOVERY</span></div></section>
    <section className="picks-section content-wrap"><div className="section-heading"><div><p className="eyebrow">A LITTLE INSPIRATION</p><h2>{prefs.brands.length||prefs.styles.length?'Your curated starting point':'A few things catching our eye'}</h2></div><button className="text-action" type="button" onClick={()=>browse('All','')}>View the full edit <ArrowUpRight size={18}/></button></div><div className="concept-note"><Info size={16}/> {isLive?'Approved retailer feed records; prices and availability can change at checkout.':'Independent concept catalog with dated editorial references. Unverified concept items are illustrative, not actual offers.'}</div><ProductGrid items={preferredItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/></section>
+   <section className="content-wrap"><RelatedStrip seeds={discoverySeeds} onBrowse={name=>browseBrand(name)} onMatrix={openMatrix}/></section>
    <section className="brand-strip"><div className="content-wrap"><p className="eyebrow">A FEW NAMES WE LOVE</p><div className="brand-strip-inner">{['Faherty','Buck Mason','Rhone','Marine Layer','Reformation','Jenni Kayne'].map(n=><BrandLink key={n} name={n} className="brand-name-link"/>)}</div><button type="button" className="underlined-action" onClick={()=>changePage('brands')}>Explore the full brand directory <ArrowRight size={17}/></button></div></section>
   </main>}
   {page==='shop'&&<main className="shop-page content-wrap"><div className="page-intro"><div><p className="eyebrow">THE CROSS-BRAND EDIT</p><h1>Find your <em>something.</em></h1><p>Search across styles and brands, then compare the details that matter.</p></div><span className="section-number">LOCUS / DISCOVER</span></div>
-   <div className="shop-search-area"><SearchForm query={query} setQuery={setQuery} onSubmit={()=>recordSearch(query)} large/><div className="suggestions"><span>Try:</span>{IDEAS.map(i=><button type="button" key={i} onClick={()=>{recordSearch(i);setQuery(i);setType('All');setBrand('All');}}>{i}</button>)}</div></div>
+   <div className="shop-search-area"><SearchForm query={query} setQuery={setQuery} onSubmit={()=>recordSearch(query)} large/><p className="search-help">Search several things at once using semicolons. Try “linen shirt; wool sweater; table lamp”, or search “shirts like Faherty” for similar brands.</p><div className="suggestions"><span>Try:</span>{IDEAS.map(i=><button type="button" key={i} onClick={()=>{recordSearch(i);setQuery(i);setType('All');setBrand('All');setDepartment('All');setIncludeRelated(false);}}>{i}</button>)}</div></div>
    <div className="department-tabs" role="group" aria-label="Departments">{departments.map(d=><button key={d} type="button" className={department===d?'active':''} onClick={()=>{if(d!==department)record('category');setDepartment(d);setType('All');setBrand('All');}}>{d}</button>)}</div>
    <div className="shop-layout"><aside className="filter-sidebar"><div className="filter-title"><SlidersHorizontal size={18}/><strong>Refine the edit</strong><button type="button" onClick={clear}>Reset</button></div>
     <label className="filter-control">Category<select value={type} onChange={e=>setType(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort().map(t=><option key={t}>{t}</option>)}</select></label>
     <label className="filter-control">Brand<select value={brand} onChange={e=>setBrand(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort().map(b=><option key={b}>{b}</option>)}</select></label>
+    {brand!=='All'&&<label className="real-toggle"><input type="checkbox" checked={includeRelated} onChange={e=>setIncludeRelated(e.target.checked)}/> Include similar brands</label>}
     <label className="filter-control">Aesthetic<select value={style} onChange={e=>setStyle(e.target.value)}><option>All</option>{styles.map(s=><option key={s}>{s}</option>)}</select></label>
     <label className="filter-control">Price ceiling <strong>{formatPrice(maxPrice)}</strong><input type="range" min="50" max="1000" step="25" value={maxPrice} onChange={e=>setMaxPrice(Number(e.target.value))}/><span className="range-ends"><span>$50</span><span>$1,000+</span></span></label>
     <label className="real-toggle"><input type="checkbox" checked={realOnly} onChange={e=>setRealOnly(e.target.checked)}/> Real product links only</label>
     <div className="sidebar-message"><Sparkles size={17}/><span>Make discovery yours.</span><button type="button" onClick={()=>setShowPreferences(true)}>Edit your style preferences <ArrowRight size={14}/></button></div>
    </aside>
-   <div className="shop-main"><div className="shop-results-header"><div><strong>{result.items.length} {isLive?'feed products':'matches'}</strong><p>{query?'Showing results for “'+query+'”':'Explore and compare across the Locus catalog'}</p></div><label className="sort-control">Sort <select value={sort} onChange={e=>setSort(e.target.value)}><option value="recommended">For you</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="brand">Brand A–Z</option></select></label></div>
+   <div className="shop-main"><div className="shop-results-header"><div><strong>{result.items.length} matches · {new Set(result.items.map(p=>p.brand)).size} brands</strong><p>{query?'Showing results for “'+query+'”':'Explore and compare across the Locus catalog'}</p>{result.clauses?.length>1&&<div className="query-clauses">{result.clauses.map(c=><span key={c}>{c} · {result.items.filter(p=>p.matchedQueries?.includes(c)).length}</span>)}</div>}</div><label className="sort-control">Sort <select value={sort} onChange={e=>setSort(e.target.value)}><option value="recommended">For you</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="brand">Brand A–Z</option></select></label></div>
+    {resultSeeds.length>0&&<RelatedStrip seeds={resultSeeds} department={department} onBrowse={name=>browseBrand(name,false,department,true)} onMatrix={openMatrix}/>}
     <div className="concept-note"><Info size={16}/> {isLive?'Products are sourced from an authorized retailer feed. Prices may change, and merchants handle checkout.':'Editorial references open actual product pages with ordinary links; their prices are dated snapshots. Concepts open brand homepages and are not actual offers.'}</div>
-    {result.items.length?<ProductGrid items={result.items} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/>:<EmptyResults onReset={clear}/>}
+    {result.items.length?<><ProductGrid items={result.items.slice(0,visibleCount)} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/>{result.items.length>visibleCount&&<div className="load-more"><p>Showing {visibleCount} of {result.items.length} matches</p><button className="button-secondary" onClick={()=>setVisibleCount(n=>n+24)}>Load 24 more <ArrowRight size={16}/></button></div>}</>:<EmptyResults onReset={clear}/>}
    </div></div>
   </main>}
   {page==='brands'&&<main className="content-wrap brands-page"><div className="page-intro"><div><p className="eyebrow">THE LOCUS DIRECTORY</p><h1>Consider this your <em>shortlist.</em></h1><p>From longstanding favorites to the brands you haven't discovered yet.</p></div><span className="section-number">CURATED BRANDS / {brands.length}</span></div>
    <div className="brand-filters"><div className="directory-search"><Search size={17}/><input aria-label="Find a brand" placeholder="Find a brand..." value={brandFilter} onChange={e=>setBrandFilter(e.target.value)}/></div><div className="directory-tabs">{departments.map(d=><button type="button" className={brandDirectoryDepartment===d?'active':''} key={d} onClick={()=>setBrandDirectoryDepartment(d)}>{d}</button>)}</div></div>
-   <div className="brand-directory">{visibleBrands.map((b,index)=><article key={b.name} className="brand-entry"><div className="brand-entry-number">{String(index+1).padStart(2,'0')}</div><div className="brand-entry-content"><h3>{b.name}</h3><div className="brand-tags">{b.departments.map(x=><span key={x}>{x}</span>)}{b.styles.slice(0,2).map(x=><span key={x}>{x}</span>)}</div></div><div className="brand-entry-actions"><button type="button" onClick={()=>{setBrand(b.name);setType('All');setDepartment('All');setQuery('');setRealOnly(false);changePage('shop');}}>Browse the edit <ChevronRight size={16}/></button><BrandLink name={b.name} className="brand-external" onClick={()=>record('brand_click',{brand:b.name})}>Visit website</BrandLink></div></article>)}</div>
+   <div className="brand-directory">{visibleBrands.map((b,index)=><article key={b.name} className="brand-entry"><BrandArtwork brand={b.name}/><div className="brand-entry-content"><h3>{b.name}</h3><div className="brand-tags">{b.departments.map(x=><span key={x}>{x}</span>)}{b.styles.slice(0,2).map(x=><span key={x}>{x}</span>)}<span>{tierLabel(b.priceTier)}</span></div></div><div className="brand-entry-actions"><button type="button" onClick={()=>browseBrand(b.name)}>Browse the edit <ChevronRight size={16}/></button><button type="button" onClick={()=>openMatrix(b.name)}>Similar brands <Compass size={16}/></button><BrandLink name={b.name} className="brand-external" onClick={()=>record('brand_click',{brand:b.name})}>Visit website</BrandLink></div></article>)}</div>
    {!visibleBrands.length&&<div className="empty-state"><h3>No brands found</h3><button type="button" className="button-secondary" onClick={()=>{setBrandFilter('');setBrandDirectoryDepartment('All');}}>Reset directory</button></div>}
   </main>}
+  {page==='matrix'&&<BrandMatrix seed={matrixSeed} onSeed={setMatrixSeed} onBrowse={name=>browseBrand(name)} onExplore={(name,dept)=>browseBrand(name,true,dept)} prefs={prefs}/>}
   {page==='saved'&&<main className="content-wrap saved-page"><div className="page-intro"><div><p className="eyebrow">KEPT CLOSE</p><h1>The things you <em>come back to.</em></h1><p>Saved to this browser. No account or checkout required.</p></div><span className="section-number">YOUR EDIT / {savedItems.length}</span></div>{savedItems.length?<><div className="concept-note"><Info size={16}/> Saved items are stored locally on your device. No synchronized account is connected.</div><ProductGrid items={savedItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/></>:<div className="empty-state"><Bookmark size={34} strokeWidth={1.3}/><h3>Start collecting what speaks to you.</h3><p>Tap the heart on any item to save it here for later.</p><button type="button" className="button-primary" onClick={()=>browse('All','')}>Explore the marketplace <ArrowRight size={17}/></button></div>}</main>}
   {page==='insights'&&<Insights enabled={insightsEnabled} stats={insights} onEnable={consent} onClear={()=>setInsights(emptyInsights())} onShop={()=>browse('All','')}/>}
   <footer className="site-footer"><div className="content-wrap footer-top"><div><span className="footer-logo">locus.</span><p>A more considered way to discover what's next.</p></div><div className="footer-links"><button type="button" onClick={()=>changePage('shop')}>Shop all</button><button type="button" onClick={()=>changePage('brands')}>Brands</button><button type="button" onClick={()=>setShowPreferences(true)}>My style</button><button type="button" onClick={()=>changePage('insights')}>Privacy & partner demo</button></div></div><div className="content-wrap footer-bottom"><span>© {new Date().getFullYear()} Locus Marketplace. Independent prototype; no endorsement implied.</span><span>{isLive?"Retailer-supplied product information · Checkout takes place on merchant websites · Prices may change.":"Concepts and dated reference records · No affiliate payments or Locus checkout · Retailer websites handle purchases."}</span></div></footer>

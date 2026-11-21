@@ -1,3 +1,4 @@
+import {affinityFor,mentionedBrands,relatedBrands,withoutBrandTerms} from './affinity.js';
 // Honest, deterministic filtering of normalized records.
 // Feed integration can replace the data source without changing UI semantics.
 const TYPE_GROUPS=[
@@ -14,7 +15,8 @@ const TYPE_GROUPS=[
  {type:'Outerwear',terms:['jacket','jackets','coat','coats']},
  {type:'Activewear',terms:['legging','leggings','activewear']},
  {type:'Polos',terms:['polo','polos']},
- {type:'Decor',terms:['decor','vase','vases','pillow','pillows','throw']}
+ {type:'Decor',terms:['decor','vase','vases','pillow','pillows','throw']},
+ {type:'Shorts',terms:['shorts']}, {type:'Skirts',terms:['skirt','skirts']}
 ];
 const COLOR_GROUPS={
  white:['white','ivory','cream','ecru'],
@@ -45,25 +47,39 @@ export function parseQuery(query=''){
 function textFor(product){return [product.title,product.brand,product.department,product.type,product.color,product.fit,product.material,...(product.styles||[])].join(' ').toLowerCase();}
 function colorMatch(product,color){return !color||COLOR_GROUPS[color].some(c=>String(product.color||'').toLowerCase().includes(c));}
 export function searchCatalog(catalog,options={}){
- const {query='',department='All',type='All',brand='All',style='All',maxPrice=1500,sort='recommended',preferredBrands=[],preferredStyles=[],saved=[]}=options;
- const parsed=parseQuery(query);
+ const {query='',department='All',type='All',brand='All',style='All',maxPrice=1500,sort='recommended',preferredBrands=[],preferredStyles=[],saved=[],includeRelated=false,brandSet=[]}=options;
+ const clauses=[...new Set(String(query).split(/[;\n]+/).map(s=>s.trim()).filter(Boolean))];
+ if(clauses.length>1){
+  const found=new Map();for(const clause of clauses)for(const p of searchCatalog(catalog,{...options,query:clause}).items){const previous=found.get(p.id);found.set(p.id,{...p,rank:Math.max(p.rank,previous?.rank||0),matchedQueries:[...(previous?.matchedQueries||[]),clause]});}
+  const items=[...found.values()];sortItems(items,sort);return {items,parsed:parseQuery(query),clauses};
+ }
+ const mentions=mentionedBrands(query);
+ const isSimilar=/\b(?:like|similar to|alternatives to)\b/i.test(query)&&mentions.length>0;
+ const searchText=mentions.length?withoutBrandTerms(query):clauses[0]||query;
+ const parsed=parseQuery(searchText);
  const upper=Math.min(Number(maxPrice)||1500,parsed.max??Infinity);
- const brandAffinity=new Set(preferredBrands),savedSet=new Set(saved);
+ const seedBrands=[...new Set([...preferredBrands,...mentions,...(brand==='All'?[]:[brand]),...catalog.filter(p=>saved.includes(p.id)).map(p=>p.brand)])];
+ const brandAffinity=new Set(seedBrands),savedSet=new Set(saved);
+ const anchorBrands=[...new Set(brand==='All'?[...brandSet,...mentions]:[brand])];
+ const allowedBrands=anchorBrands.length?new Set([...anchorBrands,...(isSimilar||includeRelated?relatedBrands(anchorBrands,{department,limit:12}).map(b=>b.name):[])]):null;
  const items=catalog.filter(p=>{
   if(department!=='All'&&p.department!==department)return false;
   if(parsed.department&&p.department!==parsed.department)return false;
   if(type!=='All'&&p.type!==type)return false;
   if(parsed.type&&p.type!==parsed.type)return false;
-  if(brand!=='All'&&p.brand!==brand)return false;
+  if(allowedBrands&&!allowedBrands.has(p.brand))return false;
   if(style!=='All'&&!p.styles.includes(style))return false;
   if(p.price>upper||(parsed.min!==null&&p.price<parsed.min))return false;
   if(!colorMatch(p,parsed.color))return false;
   const text=textFor(p);
   return parsed.keywords.every(keyword=>text.includes(keyword));
- }).map(p=>({...p,rank:(brandAffinity.has(p.brand)?4:0)+(savedSet.has(p.id)?2:0)+p.styles.filter(s=>preferredStyles.includes(s)).length*2}));
+ }).map(p=>({...p,rank:(brandAffinity.has(p.brand)?5:0)+affinityFor(p.brand,seedBrands)/25+(savedSet.has(p.id)?2:0)+p.styles.filter(s=>preferredStyles.includes(s)).length*2+(p.verified||p.source==='editorial_reference'?1:0)}));
+ sortItems(items,sort);
+ return {items,parsed,clauses};
+}
+function sortItems(items,sort){
  if(sort==='price-asc')items.sort((a,b)=>a.price-b.price);
  else if(sort==='price-desc')items.sort((a,b)=>b.price-a.price);
  else if(sort==='brand')items.sort((a,b)=>a.brand.localeCompare(b.brand));
  else items.sort((a,b)=>b.rank-a.rank||a.id.localeCompare(b.id));
- return {items,parsed};
 }
