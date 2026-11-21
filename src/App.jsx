@@ -11,11 +11,12 @@ import { safeHttps } from './lib/outbound.js';
 import { references, isReference, referenceUrl, sourceLabel, priceLabel } from './data/references.js';
 import { emptyInsights, addInsight } from './lib/insights.js';
 import Insights from './Insights.jsx';
-import BrandMatrix,{BrandArtwork,RelatedStrip} from './BrandMatrix.jsx';
+import BrandMatrix,{BrandArtwork,RelatedStrip,AestheticWorlds} from './BrandMatrix.jsx';
 import ProductArtwork from './ProductArtwork.jsx';
 import {mentionedBrands,tierLabel,withoutBrandTerms} from './lib/affinity.js';
+import {worlds,worldById,profileFor,worldMatch,occasions} from './data/brandProfiles.js';
 
-const IDEAS=['white t-shirt under $80','linen shirts like Faherty','women dress under $250','table lamp','jogger under $100','linen shirt; wool sweater; table lamp','golf polo under $100'];
+const IDEAS=['white t-shirt under $80','linen shirts like Faherty','women dress under $250','table lamp','jogger under $100','linen shirt; wool sweater; table lamp','golf polo under $100','quiet luxury sweater','modern farmhouse table lamp'];
 const demoCatalog=[...references,...products];
 function useStoredState(key,fallback){
  const [value,setValue]=useState(()=>{
@@ -52,6 +53,7 @@ function ProductCard({item,isSaved,isCompared,onSave,onCompare,onOutbound}) {
   </div>
   <div className="product-copy">
    <div className="product-brand">{item.brand}</div>
+   {profileFor(item.brand)&&<span className="product-world">{worldById[profileFor(item.brand).worlds[0]].name}</span>}
    <h3>{item.title}</h3>
    <div className="product-meta"><span>{item.fit==='—'?item.material:item.fit+' fit'}</span><span>·</span><span>{item.color}</span></div>
    <div className="product-price">{formatPrice(item.price)} <span>{priceLabel(item)}</span></div>
@@ -92,7 +94,7 @@ function Comparison({items,onRemove,onClose,onOutbound}) {
  </div>;
 }
 function PreferenceModal({prefs,onSave,onClose}) {
- const [draft,setDraft]=useState(prefs);
+ const [draft,setDraft]=useState({...prefs,worlds:prefs.worlds||[]});
  const toggle=(key,item)=>setDraft(prev=>({...prev,[key]:prev[key].includes(item)?prev[key].filter(v=>v!==item):[...prev[key],item]}));
  useEffect(()=>{const close=e=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',close);return ()=>window.removeEventListener('keydown',close);},[onClose]);
  return <div className="modal-scrim" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -101,6 +103,7 @@ function PreferenceModal({prefs,onSave,onClose}) {
    <p>Choose the categories, aesthetics, and brands you love. We'll use them to organize your personal edit, right on this device.</p>
    <h3>What do you shop for?</h3><div className="pill-list">{departments.slice(1).map(d=><button key={d} type="button" className={'choice '+(draft.departments.includes(d)?'active':'')} onClick={()=>toggle('departments',d)}>{draft.departments.includes(d)&&<Check size={14}/>} {d}</button>)}</div>
    <h3>Your aesthetic</h3><div className="pill-list">{styles.map(s=><button key={s} type="button" className={'choice '+(draft.styles.includes(s)?'active':'')} onClick={()=>toggle('styles',s)}>{draft.styles.includes(s)&&<Check size={14}/>} {s}</button>)}</div>
+   <h3>Your aesthetic worlds</h3><div className="pill-list">{worlds.map(w=><button key={w.id} type="button" className={'choice '+(draft.worlds.includes(w.id)?'active':'')} onClick={()=>toggle('worlds',w.id)}>{draft.worlds.includes(w.id)&&<Check size={14}/>} {w.name}</button>)}</div>
    <h3>Brands you love</h3><div className="pill-list brand-pills">{brands.map(b=><button key={b.name} type="button" className={'choice '+(draft.brands.includes(b.name)?'active':'')} onClick={()=>toggle('brands',b.name)}>{draft.brands.includes(b.name)&&<Check size={14}/>} {b.name}</button>)}</div>
    <div className="modal-actions"><button className="button-secondary" type="button" onClick={onClose}>Cancel</button><button className="button-primary" type="button" onClick={()=>{onSave(draft);onClose();}}>Save my style <ArrowRight size={17}/></button></div>
   </section>
@@ -114,6 +117,10 @@ function App(){
  const [type,setType]=useState('All');
  const [brand,setBrand]=useState('All');
  const [style,setStyle]=useState('All');
+ const [world,setWorld]=useState('All');
+ const [occasion,setOccasion]=useState('All');
+ const [priceTier,setPriceTier]=useState('All');
+ const [brandSet,setBrandSet]=useState([]);
  const [maxPrice,setMaxPrice]=useState(1000);
  const [sort,setSort]=useState('recommended');
  const [saved,setSaved]=useStoredState('locus-saved-v1',[]);
@@ -124,10 +131,12 @@ function App(){
  const [mobileNav,setMobileNav]=useState(false);
  const [brandDirectoryDepartment,setBrandDirectoryDepartment]=useState('All');
  const [brandFilter,setBrandFilter]=useState('');
+ const [directoryWorld,setDirectoryWorld]=useState('All');
  const [liveCatalog,setLiveCatalog]=useState([]);
  const [realOnly,setRealOnly]=useState(false);
  const [includeRelated,setIncludeRelated]=useState(false);
  const [matrixSeed,setMatrixSeed]=useState('Faherty');
+ const [matrixMode,setMatrixMode]=useState('similar');
  const [visibleCount,setVisibleCount]=useState(24);
  const [insightsEnabled,setInsightsEnabled]=useState(false);
  const [insights,setInsights]=useState(emptyInsights);
@@ -141,26 +150,29 @@ function App(){
  },[]);
  const catalog=useMemo(()=>[...liveCatalog,...demoCatalog],[liveCatalog]);
  const isLive=liveCatalog.length>0;
- const result=useMemo(()=>searchCatalog(realOnly?catalog.filter(p=>p.verified||isReference(p)):catalog,{query,department,type,brand,style,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,saved,includeRelated}),[query,department,type,brand,style,maxPrice,sort,prefs,saved,catalog,realOnly,includeRelated]);
- useEffect(()=>setVisibleCount(24),[query,department,type,brand,style,maxPrice,sort,realOnly,includeRelated]);
- const preferredItems=useMemo(()=>searchCatalog(catalog,{preferredBrands:prefs.brands,preferredStyles:prefs.styles}).items.slice(0,8),[prefs,catalog]);
+ const result=useMemo(()=>searchCatalog(realOnly?catalog.filter(p=>p.verified||isReference(p)):catalog,{query,department,type,brand,brandSet,style,world,occasion,priceTier,maxPrice,sort,preferredBrands:prefs.brands,preferredStyles:prefs.styles,preferredWorlds:prefs.worlds||[],saved,includeRelated}),[query,department,type,brand,brandSet,style,world,occasion,priceTier,maxPrice,sort,prefs,saved,catalog,realOnly,includeRelated]);
+ useEffect(()=>setVisibleCount(24),[query,department,type,brand,brandSet,style,world,occasion,priceTier,maxPrice,sort,realOnly,includeRelated]);
+ const preferredItems=useMemo(()=>searchCatalog(catalog,{preferredBrands:prefs.brands,preferredStyles:prefs.styles,preferredWorlds:prefs.worlds||[]}).items.slice(0,8),[prefs,catalog]);
  const savedItems=catalog.filter(p=>saved.includes(p.id));
  const affinitySeeds=[...new Set([...(brand==='All'?[]:[brand]),...mentionedBrands(query),...prefs.brands,...savedItems.map(p=>p.brand)])];
  const discoverySeeds=affinitySeeds.length?affinitySeeds:['Faherty','Jenni Kayne'];
  const resultSeeds=affinitySeeds.length?affinitySeeds:query.trim()&&result.items.length?[result.items[0].brand]:[];
  const compareItems=catalog.filter(p=>compare.includes(p.id));
- const visibleBrands=brands.filter(b=>(brandDirectoryDepartment==='All'||b.departments.includes(brandDirectoryDepartment))&&b.name.toLowerCase().includes(brandFilter.toLowerCase()));
+ const visibleBrands=brands.filter(b=>(brandDirectoryDepartment==='All'||b.departments.includes(brandDirectoryDepartment))&&worldMatch(b.name,directoryWorld)&&b.name.toLowerCase().includes(brandFilter.toLowerCase()));
  const record=(event,details={})=>{if(insightsEnabled)setInsights(old=>addInsight(old,event,details));};
  const recordItem=(event,item)=>{if(item)record(event,{brand:item.brand,category:item.type,price:item.price,source:item.source});};
  const recordSearch=(text)=>{for(const clause of new Set(text.split(';').map(s=>s.trim()).filter(Boolean)))record('search',{category:parseQuery(clause).type});};
  const consent=(enabled)=>{setInsightsEnabled(enabled);if(!enabled)setInsights(emptyInsights());};
  const changePage=(next)=>{setPage(next);setMobileNav(false);window.scrollTo({top:0,behavior:'smooth'});};
- const browse=(dept='All',search=query,trackSearch=false)=>{if(trackSearch)recordSearch(search);if(dept!=='All')record('category');setDepartment(dept);setType('All');setBrand('All');setQuery(search);setRealOnly(false);setIncludeRelated(false);changePage('shop');};
- const browseBrand=(name,related=false,dept='All',keepQuery=false)=>{setBrand(name);if(!keepQuery){setType('All');setQuery('');setStyle('All');setMaxPrice(1000);setRealOnly(false);}else setQuery(withoutBrandTerms(query));setDepartment(dept);setIncludeRelated(related);changePage('shop');};
- const openMatrix=name=>{setMatrixSeed(name);changePage('matrix');};
+ const resetAesthetic=()=>{setWorld('All');setOccasion('All');setPriceTier('All');setBrandSet([]);};
+ const browse=(dept='All',search=query,trackSearch=false)=>{if(trackSearch)recordSearch(search);if(dept!=='All')record('category');setDepartment(dept);setType('All');setBrand('All');setQuery(search);setRealOnly(false);setIncludeRelated(false);setStyle('All');resetAesthetic();changePage('shop');};
+ const browseWorld=id=>{browse('All','');setWorld(id);setMaxPrice(1000);};
+ const browseMatches=(names,dept,filters)=>{browse(dept,'');setBrandSet(names);setWorld(filters.world);setOccasion(filters.occasion);setPriceTier(filters.priceTier);setMaxPrice(1000);};
+ const browseBrand=(name,related=false,dept='All',keepQuery=false)=>{setBrand(name);setBrandSet([]);if(!keepQuery){setType('All');setQuery('');setStyle('All');setMaxPrice(1000);setRealOnly(false);resetAesthetic();}else setQuery(withoutBrandTerms(query));setDepartment(dept);setIncludeRelated(related);changePage('shop');};
+ const openMatrix=(name,mode='similar')=>{setMatrixSeed(name);setMatrixMode(mode);changePage('matrix');};
  const toggleSaved=(id)=>{if(!saved.includes(id))recordItem('save',catalog.find(p=>p.id===id));setSaved(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);};
  const toggleCompare=(id)=>{if(!compare.includes(id)&&compare.length<3)recordItem('compare',catalog.find(p=>p.id===id));setCompare(old=>old.includes(id)?old.filter(x=>x!==id):old.length>=3?old:[...old,id]);};
- const clear=()=>{setQuery('');setDepartment('All');setType('All');setBrand('All');setStyle('All');setMaxPrice(1000);setSort('recommended');setRealOnly(false);setIncludeRelated(false);};
+ const clear=()=>{setQuery('');setDepartment('All');setType('All');setBrand('All');setStyle('All');setMaxPrice(1000);setSort('recommended');setRealOnly(false);setIncludeRelated(false);resetAesthetic();};
  const navItems=[['home','Discover'],['shop','Shop all'],['brands','Brands'],['matrix','Brand matrix'],['saved','Saved'],['insights','Partner demo']];
  useEffect(()=>{document.title='Locus — '+(page==='home'?'A marketplace for your kind of living':page==='shop'?'Shop across brands':page==='saved'?'Your saved edit':page==='brands'?'Explore brands':page==='matrix'?'Brand matrix':'Partner demo');},[page]);
  return <div className="site-shell">
@@ -185,35 +197,42 @@ function App(){
      <button type="button" className="department-tile dept-home" onClick={()=>browse('Home','')}><div className="tile-image original-tile"><Home size={108} strokeWidth={.65}/></div><span className="tile-kicker">03 / THE HOME</span><span className="tile-title">Home & living <ArrowUpRight size={23}/></span><span className="tile-caption">A space that feels like yours.</span></button>
     </div><p className="image-disclosure">Department photography is AI-generated visual inspiration, not retailer campaign imagery.</p>
    </section>
+   <div className="content-wrap"><AestheticWorlds onWorld={browseWorld}/></div>
    <section className="personal-section content-wrap"><div className="personal-intro"><p className="eyebrow">THE PERSONAL EDIT</p><h2>Made for your eye,<br/><em>not an algorithm's agenda.</em></h2><p>Set the brands and aesthetics you love. We'll highlight similar pieces and new names, with shopping links that lead directly to each brand.</p><button type="button" className="button-primary" onClick={()=>setShowPreferences(true)}>{prefs.brands.length||prefs.styles.length?'Refine your preferences':'Build your style profile'} <ArrowRight size={17}/></button></div><div className="personal-editorial"><span>YOUR TASTE IS THE STARTING POINT</span><div><Sparkles size={27}/><strong>Discover beyond your favorites.</strong><p>Coastal ease, heritage craftsmanship, warm interiors—and whatever else defines you.</p></div><span>FASHION / HOME / DISCOVERY</span></div></section>
    <section className="picks-section content-wrap"><div className="section-heading"><div><p className="eyebrow">A LITTLE INSPIRATION</p><h2>{prefs.brands.length||prefs.styles.length?'Your curated starting point':'A few things catching our eye'}</h2></div><button className="text-action" type="button" onClick={()=>browse('All','')}>View the full edit <ArrowUpRight size={18}/></button></div><div className="concept-note"><Info size={16}/> {isLive?'Approved retailer feed records; prices and availability can change at checkout.':'Independent concept catalog with dated editorial references. Unverified concept items are illustrative, not actual offers.'}</div><ProductGrid items={preferredItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/></section>
-   <section className="content-wrap"><RelatedStrip seeds={discoverySeeds} onBrowse={name=>browseBrand(name)} onMatrix={openMatrix}/></section>
+   <section className="content-wrap"><RelatedStrip seeds={discoverySeeds} onBrowse={name=>browseBrand(name)} onMatrix={openMatrix}/><RelatedStrip seeds={discoverySeeds} onBrowse={name=>browseBrand(name)} onMatrix={openMatrix} mode="lifestyle"/></section>
    <section className="brand-strip"><div className="content-wrap"><p className="eyebrow">A FEW NAMES WE LOVE</p><div className="brand-strip-inner">{['Faherty','Buck Mason','Rhone','Marine Layer','Reformation','Jenni Kayne'].map(n=><BrandLink key={n} name={n} className="brand-name-link"/>)}</div><button type="button" className="underlined-action" onClick={()=>changePage('brands')}>Explore the full brand directory <ArrowRight size={17}/></button></div></section>
   </main>}
   {page==='shop'&&<main className="shop-page content-wrap"><div className="page-intro"><div><p className="eyebrow">THE CROSS-BRAND EDIT</p><h1>Find your <em>something.</em></h1><p>Search across styles and brands, then compare the details that matter.</p></div><span className="section-number">LOCUS / DISCOVER</span></div>
    <div className="shop-search-area"><SearchForm query={query} setQuery={setQuery} onSubmit={()=>recordSearch(query)} large/><p className="search-help">Search several things at once using semicolons. Try “linen shirt; wool sweater; table lamp”, or search “shirts like Faherty” for similar brands.</p><div className="suggestions"><span>Try:</span>{IDEAS.map(i=><button type="button" key={i} onClick={()=>{recordSearch(i);setQuery(i);setType('All');setBrand('All');setDepartment('All');setIncludeRelated(false);}}>{i}</button>)}</div></div>
-   <div className="department-tabs" role="group" aria-label="Departments">{departments.map(d=><button key={d} type="button" className={department===d?'active':''} onClick={()=>{if(d!==department)record('category');setDepartment(d);setType('All');setBrand('All');}}>{d}</button>)}</div>
+   <div className="department-tabs" role="group" aria-label="Departments">{departments.map(d=><button key={d} type="button" className={department===d?'active':''} onClick={()=>{if(d!==department)record('category');setDepartment(d);setType('All');setBrand('All');setIncludeRelated(false);}}>{d}</button>)}</div>
    <div className="shop-layout"><aside className="filter-sidebar"><div className="filter-title"><SlidersHorizontal size={18}/><strong>Refine the edit</strong><button type="button" onClick={clear}>Reset</button></div>
     <label className="filter-control">Category<select value={type} onChange={e=>setType(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.type))].sort().map(t=><option key={t}>{t}</option>)}</select></label>
-    <label className="filter-control">Brand<select value={brand} onChange={e=>setBrand(e.target.value)}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort().map(b=><option key={b}>{b}</option>)}</select></label>
+    <label className="filter-control">Brand<select value={brand} onChange={e=>{setBrand(e.target.value);setBrandSet([]);}}><option>All</option>{[...new Set(catalog.filter(p=>department==='All'||p.department===department).map(p=>p.brand))].sort().map(b=><option key={b}>{b}</option>)}</select></label>
     {brand!=='All'&&<label className="real-toggle"><input type="checkbox" checked={includeRelated} onChange={e=>setIncludeRelated(e.target.checked)}/> Include similar brands</label>}
-    <label className="filter-control">Aesthetic<select value={style} onChange={e=>setStyle(e.target.value)}><option>All</option>{styles.map(s=><option key={s}>{s}</option>)}</select></label>
+    <label className="filter-control">Aesthetic world<select value={world} onChange={e=>setWorld(e.target.value)}><option value="All">All worlds</option>{worlds.map(w=><option value={w.id} key={w.id}>{w.name}</option>)}</select></label>
+    <label className="filter-control">Lifestyle / occasion<select value={occasion} onChange={e=>setOccasion(e.target.value)}><option>All</option>{occasions.map(o=><option key={o}>{o}</option>)}</select></label>
+    <label className="filter-control">Brand price positioning<select value={priceTier} onChange={e=>setPriceTier(e.target.value)}><option value="All">All tiers</option>{[1,2,3].map(t=><option value={t} key={t}>{tierLabel(t)}</option>)}</select></label>
+    <label className="filter-control">Product style<select value={style} onChange={e=>setStyle(e.target.value)}><option>All</option>{styles.map(s=><option key={s}>{s}</option>)}</select></label>
     <label className="filter-control">Price ceiling <strong>{formatPrice(maxPrice)}</strong><input type="range" min="50" max="1000" step="25" value={maxPrice} onChange={e=>setMaxPrice(Number(e.target.value))}/><span className="range-ends"><span>$50</span><span>$1,000+</span></span></label>
     <label className="real-toggle"><input type="checkbox" checked={realOnly} onChange={e=>setRealOnly(e.target.checked)}/> Real product links only</label>
     <div className="sidebar-message"><Sparkles size={17}/><span>Make discovery yours.</span><button type="button" onClick={()=>setShowPreferences(true)}>Edit your style preferences <ArrowRight size={14}/></button></div>
    </aside>
    <div className="shop-main"><div className="shop-results-header"><div><strong>{result.items.length} matches · {new Set(result.items.map(p=>p.brand)).size} brands</strong><p>{query?'Showing results for “'+query+'”':'Explore and compare across the Locus catalog'}</p>{result.clauses?.length>1&&<div className="query-clauses">{result.clauses.map(c=><span key={c}>{c} · {result.items.filter(p=>p.matchedQueries?.includes(c)).length}</span>)}</div>}</div><label className="sort-control">Sort <select value={sort} onChange={e=>setSort(e.target.value)}><option value="recommended">For you</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="brand">Brand A–Z</option></select></label></div>
-    {resultSeeds.length>0&&<RelatedStrip seeds={resultSeeds} department={department} onBrowse={name=>browseBrand(name,false,department,true)} onMatrix={openMatrix}/>}
+    {world!=='All'&&<div className="world-result"><strong>{worldById[world].name}</strong><p>{worldById[world].description} · Brand-level editorial classification.</p><button onClick={()=>setWorld('All')}>Clear world <X size={13}/></button></div>}
+    {brandSet.length>0&&<div className="world-result"><strong>Your matrix edit · {brandSet.length} selected brands</strong><p>{brandSet.join(' · ')}</p><button onClick={()=>setBrandSet([])}>Show all brands <X size={13}/></button></div>}
+    {resultSeeds.length>0&&<RelatedStrip seeds={resultSeeds} department={department} world={world} occasion={occasion} priceTier={priceTier} onBrowse={name=>browseBrand(name,false,department,true)} onMatrix={openMatrix}/>}
     <div className="concept-note"><Info size={16}/> {isLive?'Products are sourced from an authorized retailer feed. Prices may change, and merchants handle checkout.':'Editorial references open actual product pages with ordinary links; their prices are dated snapshots. Concepts open brand homepages and are not actual offers.'}</div>
     {result.items.length?<><ProductGrid items={result.items.slice(0,visibleCount)} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/>{result.items.length>visibleCount&&<div className="load-more"><p>Showing {visibleCount} of {result.items.length} matches</p><button className="button-secondary" onClick={()=>setVisibleCount(n=>n+24)}>Load 24 more <ArrowRight size={16}/></button></div>}</>:<EmptyResults onReset={clear}/>}
    </div></div>
   </main>}
   {page==='brands'&&<main className="content-wrap brands-page"><div className="page-intro"><div><p className="eyebrow">THE LOCUS DIRECTORY</p><h1>Consider this your <em>shortlist.</em></h1><p>From longstanding favorites to the brands you haven't discovered yet.</p></div><span className="section-number">CURATED BRANDS / {brands.length}</span></div>
    <div className="brand-filters"><div className="directory-search"><Search size={17}/><input aria-label="Find a brand" placeholder="Find a brand..." value={brandFilter} onChange={e=>setBrandFilter(e.target.value)}/></div><div className="directory-tabs">{departments.map(d=><button type="button" className={brandDirectoryDepartment===d?'active':''} key={d} onClick={()=>setBrandDirectoryDepartment(d)}>{d}</button>)}</div></div>
-   <div className="brand-directory">{visibleBrands.map((b,index)=><article key={b.name} className="brand-entry"><BrandArtwork brand={b.name}/><div className="brand-entry-content"><h3>{b.name}</h3><div className="brand-tags">{b.departments.map(x=><span key={x}>{x}</span>)}{b.styles.slice(0,2).map(x=><span key={x}>{x}</span>)}<span>{tierLabel(b.priceTier)}</span></div></div><div className="brand-entry-actions"><button type="button" onClick={()=>browseBrand(b.name)}>Browse the edit <ChevronRight size={16}/></button><button type="button" onClick={()=>openMatrix(b.name)}>Similar brands <Compass size={16}/></button><BrandLink name={b.name} className="brand-external" onClick={()=>record('brand_click',{brand:b.name})}>Visit website</BrandLink></div></article>)}</div>
-   {!visibleBrands.length&&<div className="empty-state"><h3>No brands found</h3><button type="button" className="button-secondary" onClick={()=>{setBrandFilter('');setBrandDirectoryDepartment('All');}}>Reset directory</button></div>}
+   <div className="directory-world"><label>Aesthetic world <select value={directoryWorld} onChange={e=>setDirectoryWorld(e.target.value)}><option value="All">All worlds</option>{worlds.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label><span>{visibleBrands.length} brands</span></div>
+   <div className="brand-directory">{visibleBrands.map(b=><article key={b.name} className="brand-entry"><BrandArtwork brand={b.name}/><div className="brand-entry-content"><h3>{b.name}</h3><p className="directory-profile">{profileFor(b.name).description}</p><div className="brand-tags">{b.departments.map(x=><span key={x}>{x}</span>)}{profileFor(b.name).worlds.map(id=><span key={id}>{worldById[id].name}</span>)}<span>{tierLabel(b.priceTier)}</span></div></div><div className="brand-entry-actions"><button type="button" onClick={()=>browseBrand(b.name)}>Browse the edit <ChevronRight size={16}/></button><button type="button" onClick={()=>openMatrix(b.name)}>Brand connections <Compass size={16}/></button><BrandLink name={b.name} className="brand-external" onClick={()=>record('brand_click',{brand:b.name})}>Visit website</BrandLink></div></article>)}</div>
+   {!visibleBrands.length&&<div className="empty-state"><h3>No brands found</h3><button type="button" className="button-secondary" onClick={()=>{setBrandFilter('');setBrandDirectoryDepartment('All');setDirectoryWorld('All');}}>Reset directory</button></div>}
   </main>}
-  {page==='matrix'&&<BrandMatrix seed={matrixSeed} onSeed={setMatrixSeed} onBrowse={name=>browseBrand(name)} onExplore={(name,dept)=>browseBrand(name,true,dept)} prefs={prefs}/>}
+  {page==='matrix'&&<BrandMatrix seed={matrixSeed} onSeed={setMatrixSeed} onBrowse={name=>browseBrand(name)} onExplore={browseMatches} onWorld={browseWorld} prefs={prefs} initialMode={matrixMode}/>}
   {page==='saved'&&<main className="content-wrap saved-page"><div className="page-intro"><div><p className="eyebrow">KEPT CLOSE</p><h1>The things you <em>come back to.</em></h1><p>Saved to this browser. No account or checkout required.</p></div><span className="section-number">YOUR EDIT / {savedItems.length}</span></div>{savedItems.length?<><div className="concept-note"><Info size={16}/> Saved items are stored locally on your device. No synchronized account is connected.</div><ProductGrid items={savedItems} saved={saved} compare={compare} onSave={toggleSaved} onCompare={toggleCompare} onOutbound={recordItem}/></>:<div className="empty-state"><Bookmark size={34} strokeWidth={1.3}/><h3>Start collecting what speaks to you.</h3><p>Tap the heart on any item to save it here for later.</p><button type="button" className="button-primary" onClick={()=>browse('All','')}>Explore the marketplace <ArrowRight size={17}/></button></div>}</main>}
   {page==='insights'&&<Insights enabled={insightsEnabled} stats={insights} onEnable={consent} onClear={()=>setInsights(emptyInsights())} onShop={()=>browse('All','')}/>}
   <footer className="site-footer"><div className="content-wrap footer-top"><div><span className="footer-logo">locus.</span><p>A more considered way to discover what's next.</p></div><div className="footer-links"><button type="button" onClick={()=>changePage('shop')}>Shop all</button><button type="button" onClick={()=>changePage('brands')}>Brands</button><button type="button" onClick={()=>setShowPreferences(true)}>My style</button><button type="button" onClick={()=>changePage('insights')}>Privacy & partner demo</button></div></div><div className="content-wrap footer-bottom"><span>© {new Date().getFullYear()} Locus Marketplace. Independent prototype; no endorsement implied.</span><span>{isLive?"Retailer-supplied product information · Checkout takes place on merchant websites · Prices may change.":"Concepts and dated reference records · No affiliate payments or Locus checkout · Retailer websites handle purchases."}</span></div></footer>

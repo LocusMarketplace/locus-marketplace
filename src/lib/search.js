@@ -1,4 +1,6 @@
 import {affinityFor,mentionedBrands,relatedBrands,withoutBrandTerms} from './affinity.js';
+import {worldMatch,occasionMatch,worldFromQuery} from '../data/brandProfiles.js';
+import {brandByName} from '../data/catalog.js';
 // Honest, deterministic filtering of normalized records.
 // Feed integration can replace the data source without changing UI semantics.
 const TYPE_GROUPS=[
@@ -47,7 +49,7 @@ export function parseQuery(query=''){
 function textFor(product){return [product.title,product.brand,product.department,product.type,product.color,product.fit,product.material,...(product.styles||[])].join(' ').toLowerCase();}
 function colorMatch(product,color){return !color||COLOR_GROUPS[color].some(c=>String(product.color||'').toLowerCase().includes(c));}
 export function searchCatalog(catalog,options={}){
- const {query='',department='All',type='All',brand='All',style='All',maxPrice=1500,sort='recommended',preferredBrands=[],preferredStyles=[],saved=[],includeRelated=false,brandSet=[]}=options;
+ const {query='',department='All',type='All',brand='All',style='All',world='All',occasion='All',priceTier='All',maxPrice=1500,sort='recommended',preferredBrands=[],preferredStyles=[],preferredWorlds=[],saved=[],includeRelated=false,brandSet=[]}=options;
  const clauses=[...new Set(String(query).split(/[;\n]+/).map(s=>s.trim()).filter(Boolean))];
  if(clauses.length>1){
   const found=new Map();for(const clause of clauses)for(const p of searchCatalog(catalog,{...options,query:clause}).items){const previous=found.get(p.id);found.set(p.id,{...p,rank:Math.max(p.rank,previous?.rank||0),matchedQueries:[...(previous?.matchedQueries||[]),clause]});}
@@ -56,24 +58,29 @@ export function searchCatalog(catalog,options={}){
  const mentions=mentionedBrands(query);
  const isSimilar=/\b(?:like|similar to|alternatives to)\b/i.test(query)&&mentions.length>0;
  const searchText=mentions.length?withoutBrandTerms(query):clauses[0]||query;
- const parsed=parseQuery(searchText);
+ const inferredWorld=worldFromQuery(searchText);
+ const parsed=parseQuery(inferredWorld?searchText.toLowerCase().replace(inferredWorld.phrase,''):searchText);
  const upper=Math.min(Number(maxPrice)||1500,parsed.max??Infinity);
- const seedBrands=[...new Set([...preferredBrands,...mentions,...(brand==='All'?[]:[brand]),...catalog.filter(p=>saved.includes(p.id)).map(p=>p.brand)])];
+ const seedBrands=[...new Set([...preferredBrands,...mentions,...brandSet,...(brand==='All'?[]:[brand]),...catalog.filter(p=>saved.includes(p.id)).map(p=>p.brand)])];
  const brandAffinity=new Set(seedBrands),savedSet=new Set(saved);
- const anchorBrands=[...new Set(brand==='All'?[...brandSet,...mentions]:[brand])];
- const allowedBrands=anchorBrands.length?new Set([...anchorBrands,...(isSimilar||includeRelated?relatedBrands(anchorBrands,{department,limit:12}).map(b=>b.name):[])]):null;
+ const anchorBrands=[...new Set(brand==='All'?(mentions.length?mentions:brandSet):[brand])];
+ const allowedBrands=anchorBrands.length?new Set([...anchorBrands,...(isSimilar||includeRelated?relatedBrands(anchorBrands,{department,limit:15}).map(b=>b.name):[])]):null;
+ const affinityByBrand=new Map([...new Set(catalog.map(p=>p.brand))].map(n=>[n,affinityFor(n,seedBrands)]));
  const items=catalog.filter(p=>{
   if(department!=='All'&&p.department!==department)return false;
   if(parsed.department&&p.department!==parsed.department)return false;
   if(type!=='All'&&p.type!==type)return false;
   if(parsed.type&&p.type!==parsed.type)return false;
   if(allowedBrands&&!allowedBrands.has(p.brand))return false;
+  if(brandSet.length&&!brandSet.includes(p.brand))return false;
   if(style!=='All'&&!p.styles.includes(style))return false;
+  if(!worldMatch(p.brand,world)||(inferredWorld&&!worldMatch(p.brand,inferredWorld.id))||!occasionMatch(p.brand,occasion))return false;
+  if(priceTier!=='All'&&brandByName[p.brand]?.priceTier!==Number(priceTier))return false;
   if(p.price>upper||(parsed.min!==null&&p.price<parsed.min))return false;
   if(!colorMatch(p,parsed.color))return false;
   const text=textFor(p);
   return parsed.keywords.every(keyword=>text.includes(keyword));
- }).map(p=>({...p,rank:(brandAffinity.has(p.brand)?5:0)+affinityFor(p.brand,seedBrands)/25+(savedSet.has(p.id)?2:0)+p.styles.filter(s=>preferredStyles.includes(s)).length*2+(p.verified||p.source==='editorial_reference'?1:0)}));
+ }).map(p=>({...p,rank:(brandAffinity.has(p.brand)?5:0)+(affinityByBrand.get(p.brand)||0)/25+(savedSet.has(p.id)?2:0)+p.styles.filter(s=>preferredStyles.includes(s)).length*2+preferredWorlds.filter(w=>worldMatch(p.brand,w)).length*3+(p.verified||p.source==='editorial_reference'?1:0)}));
  sortItems(items,sort);
  return {items,parsed,clauses};
 }
